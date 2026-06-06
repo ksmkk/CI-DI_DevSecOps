@@ -1,6 +1,6 @@
 version: 2
+
 updates:
-  # ─── Dependencias del proyecto (npm) ──────────────────────────
   - package-ecosystem: 'npm'
     directory: '/'
     schedule:
@@ -13,39 +13,9 @@ updates:
       - 'dependencias'
       - 'seguridad'
     reviewers:
-      - 'USUARIO_GITHUB'
-  # ─── Dependencias de GitHub Actions ───────────────────────────
+      - 'ksmkk'
+
   - package-ecosystem: 'github-actions'
     directory: '/'
     schedule:
       interval: 'weekly'
-  # Mantener actualizadas las actions también es crítico:
-  # actions comprometidas pueden inyectar código malicioso en el pipeline.
-
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Conectar a base de datos
-        env:
-          DB_URL: ${{ secrets.DATABASE_URL }}
-          API_KEY: ${{ secrets.API_KEY }}
-        run: |
-          echo 'Conectando...'
-          # NUNCA hacer: echo $DB_URL  <- expone el secreto en los logs
-          node scripts/connect.js
-
-
-gitleaks:
-    name: Secret Scanning — Gitleaks
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0          # Escanear TODO el historial
-      - name: Ejecutar Gitleaks
-        uses: gitleaks/gitleaks-action@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        # GITHUB_TOKEN es un secreto automático que GitHub inyecta en cada
-        # ejecución. No es necesario crearlo manualmente.
