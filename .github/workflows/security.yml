@@ -7,49 +7,186 @@ on:
     branches: [ 'main' ]
   schedule:
     - cron: '0 3 * * 1'   # Cada lunes a las 03:00 UTC
-  # El análisis programado detecta vulnerabilidades en dependencias
-  # que aparecen DESPUÉS de hacer el push (vulnerabilidades de día 0).
 
 permissions:
   contents: read
   security-events: write
-  # Principio de mínimo privilegio: solo los permisos necesarios.
 
 jobs:
   codeql:
     name: SAST — CodeQL
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0    # Historial completo para mejor análisis
+          fetch-depth: 0
 
       - name: Inicializar CodeQL
         uses: github/codeql-action/init@v3
         with:
           languages: javascript-typescript
-          # Otros lenguajes: python, java, csharp, go, cpp, ruby
           queries: security-extended
-          # security-extended incluye reglas de mayor severidad
 
-      - name: Auto-build (inferir compilación)
+      - name: Auto-build
         uses: github/codeql-action/autobuild@v3
 
       - name: Ejecutar análisis CodeQL
         uses: github/codeql-action/analyze@v3
         with:
           category: '/language:javascript-typescript'
+
+      - name: Notificar falla de seguridad
+        if: failure()
+        uses: slackapi/slack-github-action@v1.27.0
+        with:
+          payload: |
+            {
+              "text": ":rotating_light: *FALLA DE SEGURIDAD en CI/CD*",
+              "attachments": [{
+                "color": "danger",
+                "fields": [
+                  {"title": "Repositorio", "value": "${{ github.repository }}"},
+                  {"title": "Branch", "value": "${{ github.ref_name }}"},
+                  {"title": "Commit", "value": "${{ github.sha }}"},
+                  {"title": "Actor", "value": "${{ github.actor }}"}
+                ]
+              }]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
   sca-npm:
     name: SCA — npm audit
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
         with:
           node-version: '20'
-      - run: npm ci
+          cache: 'npm'
+
+      - name: Instalar dependencias
+        run: npm ci
+
       - name: Auditoría de dependencias
         run: npm audit --audit-level=high
-      # --audit-level=high: falla solo en vulnerabilidades HIGH o CRITICAL
-      # moderate: falla también en vulnerabilidades moderadas
-      # Ajustar según la política de riesgo del equipo
+
+      - name: Notificar falla de seguridad
+        if: failure()
+        uses: slackapi/slack-github-action@v1.27.0
+        with:
+          payload: |
+            {
+              "text": ":rotating_light: *FALLA DE SEGURIDAD en CI/CD*",
+              "attachments": [{
+                "color": "danger",
+                "fields": [
+                  {"title": "Repositorio", "value": "${{ github.repository }}"},
+                  {"title": "Branch", "value": "${{ github.ref_name }}"},
+                  {"title": "Commit", "value": "${{ github.sha }}"},
+                  {"title": "Actor", "value": "${{ github.actor }}"}
+                ]
+              }]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+  gitleaks:
+    name: Secret Scanning — Gitleaks
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Ejecutar Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Notificar falla de seguridad
+        if: failure()
+        uses: slackapi/slack-github-action@v1.27.0
+        with:
+          payload: |
+            {
+              "text": ":rotating_light: *FALLA DE SEGURIDAD en CI/CD*",
+              "attachments": [{
+                "color": "danger",
+                "fields": [
+                  {"title": "Repositorio", "value": "${{ github.repository }}"},
+                  {"title": "Branch", "value": "${{ github.ref_name }}"},
+                  {"title": "Commit", "value": "${{ github.sha }}"},
+                  {"title": "Actor", "value": "${{ github.actor }}"}
+                ]
+              }]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+  owasp-zap:
+    name: DAST — OWASP ZAP Baseline
+    runs-on: ubuntu-latest
+    needs: [codeql, sca-npm, gitleaks]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Construir aplicación
+        run: npm run build
+
+      - name: Levantar aplicación local
+        run: |
+          npm start &
+          echo $! > app.pid
+
+      - name: Esperar a que la aplicación responda
+        run: |
+          timeout 60 bash -c 'until curl -sf http://127.0.0.1:3000/health; do sleep 2; done'
+
+      - name: Ejecutar OWASP ZAP Baseline Scan
+        uses: zaproxy/action-baseline@v0.15.0
+        with:
+          target: 'http://127.0.0.1:3000'
+          allow_issue_writing: false
+          artifact_name: zap_scan_report
+          cmd_options: '-a -I'
+
+      - name: Detener aplicación local
+        if: always()
+        run: |
+          if [ -f app.pid ]; then kill $(cat app.pid) || true; fi
+
+      - name: Notificar falla de seguridad
+        if: failure()
+        uses: slackapi/slack-github-action@v1.27.0
+        with:
+          payload: |
+            {
+              "text": ":rotating_light: *FALLA DE SEGURIDAD en CI/CD*",
+              "attachments": [{
+                "color": "danger",
+                "fields": [
+                  {"title": "Repositorio", "value": "${{ github.repository }}"},
+                  {"title": "Branch", "value": "${{ github.ref_name }}"},
+                  {"title": "Commit", "value": "${{ github.sha }}"},
+                  {"title": "Actor", "value": "${{ github.actor }}"}
+                ]
+              }]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
