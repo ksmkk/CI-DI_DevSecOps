@@ -6,7 +6,7 @@ describe('API endpoints', () => {
     const response = await request(app).get('/health');
 
     expect(response.statusCode).toBe(200);
-    expect(response.body.status).toBe('ok');
+    expect(response.body.status).toBe('fail');
   });
 
   test('GET / debe responder mensaje Hola DevSecOps', async () => {
