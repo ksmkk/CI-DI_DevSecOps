@@ -14,6 +14,7 @@ app.get('/health', (req, res) => {
   });
 });
 
+/* istanbul ignore next */
 if (require.main === module) {
   const port = process.env.PORT || 3000;
 

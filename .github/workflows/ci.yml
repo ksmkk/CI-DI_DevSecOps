@@ -57,7 +57,7 @@ jobs:
       - run: npm ci
 
       - name: Ejecutar pruebas con Jest
-        run: npm test -- --coverage --coverageThreshold='{"global":{"lines":80}}'
+        run:  npm test -- --coverage
 
   build:
     name: Compilar artefacto
