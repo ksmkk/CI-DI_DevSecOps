@@ -6,7 +6,7 @@ on:
   pull_request:
     branches: [ 'main' ]
   schedule:
-    - cron: '0 3 * * 1'   # Cada lunes a las 03:00 UTC
+    - cron: '0 3 * * 1'
 
 permissions:
   contents: read
@@ -16,11 +16,22 @@ jobs:
   codeql:
     name: SAST — CodeQL
     runs-on: ubuntu-latest
+    env:
+      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
 
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Instalar dependencias
+        run: npm ci
 
       - name: Inicializar CodeQL
         uses: github/codeql-action/init@v3
@@ -28,16 +39,14 @@ jobs:
           languages: javascript-typescript
           queries: security-extended
 
-      - name: Auto-build
-        uses: github/codeql-action/autobuild@v3
-
       - name: Ejecutar análisis CodeQL
         uses: github/codeql-action/analyze@v3
         with:
           category: '/language:javascript-typescript'
 
       - name: Notificar falla de seguridad
-        if: failure()
+        if: ${{ failure() && startsWith(env.SLACK_WEBHOOK_URL, 'https://hooks.slack.com/services/') }}
+        continue-on-error: true
         uses: slackapi/slack-github-action@v1.27.0
         with:
           payload: |
@@ -54,11 +63,14 @@ jobs:
               }]
             }
         env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          SLACK_WEBHOOK_URL: ${{ env.SLACK_WEBHOOK_URL }}
+          SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK
 
   sca-npm:
     name: SCA — npm audit
     runs-on: ubuntu-latest
+    env:
+      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
 
     steps:
       - uses: actions/checkout@v4
@@ -76,7 +88,8 @@ jobs:
         run: npm audit --audit-level=high
 
       - name: Notificar falla de seguridad
-        if: failure()
+        if: ${{ failure() && startsWith(env.SLACK_WEBHOOK_URL, 'https://hooks.slack.com/services/') }}
+        continue-on-error: true
         uses: slackapi/slack-github-action@v1.27.0
         with:
           payload: |
@@ -93,11 +106,14 @@ jobs:
               }]
             }
         env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          SLACK_WEBHOOK_URL: ${{ env.SLACK_WEBHOOK_URL }}
+          SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK
 
   gitleaks:
     name: Secret Scanning — Gitleaks
     runs-on: ubuntu-latest
+    env:
+      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
 
     steps:
       - uses: actions/checkout@v4
@@ -110,7 +126,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Notificar falla de seguridad
-        if: failure()
+        if: ${{ failure() && startsWith(env.SLACK_WEBHOOK_URL, 'https://hooks.slack.com/services/') }}
+        continue-on-error: true
         uses: slackapi/slack-github-action@v1.27.0
         with:
           payload: |
@@ -127,12 +144,15 @@ jobs:
               }]
             }
         env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          SLACK_WEBHOOK_URL: ${{ env.SLACK_WEBHOOK_URL }}
+          SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK
 
   owasp-zap:
     name: DAST — OWASP ZAP Baseline
     runs-on: ubuntu-latest
     needs: [codeql, sca-npm, gitleaks]
+    env:
+      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
 
     steps:
       - uses: actions/checkout@v4
@@ -172,7 +192,8 @@ jobs:
           if [ -f app.pid ]; then kill $(cat app.pid) || true; fi
 
       - name: Notificar falla de seguridad
-        if: failure()
+        if: ${{ failure() && startsWith(env.SLACK_WEBHOOK_URL, 'https://hooks.slack.com/services/') }}
+        continue-on-error: true
         uses: slackapi/slack-github-action@v1.27.0
         with:
           payload: |
@@ -189,4 +210,5 @@ jobs:
               }]
             }
         env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          SLACK_WEBHOOK_URL: ${{ env.SLACK_WEBHOOK_URL }}
+          SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK
