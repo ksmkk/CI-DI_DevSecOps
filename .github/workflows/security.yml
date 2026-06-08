@@ -44,6 +44,7 @@ jobs:
         uses: github/codeql-action/analyze@v3
         with:
           category: '/language:javascript-typescript'
+          upload: 'never'
 
       - name: Notificar falla de seguridad
         if: ${{ failure() && startsWith(env.SLACK_WEBHOOK_URL, 'https://hooks.slack.com/services/') }}
