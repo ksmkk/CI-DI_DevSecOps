@@ -26,7 +26,8 @@
   },
   "homepage": "https://github.com/ksmkk/CI-DI_DevSecOps#readme",
   "dependencies": {
-    "express": "^5.2.1"
+    "express": "^5.2.1",
+    "lodash": "4.17.4"
   },
   "devDependencies": {
     "eslint": "^10.4.1",
