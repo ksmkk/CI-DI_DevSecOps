@@ -1,3 +1,4 @@
+const variableSinUsar = 'esto debe fallar';
 const express = require('express');
 
 const app = express();
